@@ -1,0 +1,51 @@
+name: migration Supabase
+
+on:
+  pull_request:
+  schedule:
+    - cron: "0 21,3,9,15,0 * * *"
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-22.04
+
+    env:
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      SUPABASE_DB_PASSWORD: ${{ secrets.PRODUCTION_DB_PASSWORD }}
+      PRODUCTION_PROJECT_ID: ${{ secrets.$PRODUCTION_PROJECT_ID }}
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - uses: supabase/setup-cli@v1
+
+      - name: migration Supabase
+        run: |
+          supabase link --project-ref $PRODUCTION_PROJECT_ID
+          supabase db remote commit
+
+      - name: commit
+        run: |
+          git config --local user.email "github-actions[bot]@users.noreply.github.com"
+          git config --local user.name "github-actions[bot]"
+          git add -A
+          git commit -m "Update Timestamp"
+
+      - name: push changes
+        uses: ad-m/github-push-action@master
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          branch: ${{ github.ref }}
+
+      - name: Start Supabase local development setup
+        run: supabase start
+
+      - name: Verify generated types are up-to-date
+        run: |
+          supabase gen types typescript --local > types.ts
+          if [ "$(git diff --ignore-space-at-eol types.ts | wc -l)" -gt "0" ]; then
+            echo "Detected uncommitted changes after build. See status below:"
+            git diff
+            exit 1
+          fi
